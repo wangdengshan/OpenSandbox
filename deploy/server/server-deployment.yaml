@@ -1,0 +1,179 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: opensandbox-server
+  namespace: opensandbox
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: opensandbox-server-role
+rules:
+- apiGroups: ["sandbox.opensandbox.io"]
+  resources: ["batchsandboxes", "pools"]
+  verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+- apiGroups: ["sandbox.opensandbox.io"]
+  resources: ["batchsandboxes/status", "pools/status"]
+  verbs: ["get", "patch", "update"]
+- apiGroups: [""]
+  resources: ["pods", "pods/status", "events"]
+  verbs: ["create", "delete", "get", "list", "patch", "update", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: opensandbox-server-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: opensandbox-server-role
+subjects:
+- kind: ServiceAccount
+  name: opensandbox-server
+  namespace: opensandbox
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensandbox-server-config
+  namespace: opensandbox
+data:
+  config.toml: |
+    [server]
+    host = "0.0.0.0"
+    port = 8080
+    log_level = "INFO"
+
+    [runtime]
+    type = "kubernetes"
+    execd_image = "sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/execd:v1.0.6"
+
+    [storage]
+    allowed_host_paths = []
+
+    [kubernetes]
+    # kubeconfig_path omitted to use in-cluster service account
+    namespace = "opensandbox"
+    informer_enabled = true
+    informer_resync_seconds = 300
+    informer_watch_timeout_seconds = 60
+    workload_provider = "batchsandbox"
+    batchsandbox_template_file = "/etc/opensandbox/batchsandbox-template.yaml"
+
+    [ingress]
+    mode = "direct"
+
+  batchsandbox-template.yaml: |
+    metadata:
+    spec:
+      replicas: 1
+      template:
+        spec:
+          restartPolicy: Never
+          tolerations:
+            - operator: "Exists"
+          volumes:
+            - name: sandbox-storage
+              emptyDir: {}
+            - name: opensandbox-bin
+              emptyDir: {}
+          initContainers:
+            - name: task-executor-installer
+              image: opensandbox-task-executor:local
+              imagePullPolicy: Never
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  cp /workspace/server /opt/opensandbox/bin/task-executor &&
+                  chmod +x /opt/opensandbox/bin/task-executor
+              volumeMounts:
+                - name: opensandbox-bin
+                  mountPath: /opt/opensandbox/bin
+            - name: execd-installer
+              image: sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/execd:v1.0.6
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  cp ./execd /opt/opensandbox/bin/execd &&
+                  cp ./bootstrap.sh /opt/opensandbox/bin/bootstrap.sh &&
+                  chmod +x /opt/opensandbox/bin/execd &&
+                  chmod +x /opt/opensandbox/bin/bootstrap.sh
+              volumeMounts:
+                - name: opensandbox-bin
+                  mountPath: /opt/opensandbox/bin
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensandbox-server
+  namespace: opensandbox
+  labels:
+    app: opensandbox-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: opensandbox-server
+  template:
+    metadata:
+      labels:
+        app: opensandbox-server
+    spec:
+      serviceAccountName: opensandbox-server
+      containers:
+      - name: server
+        image: sandbox-registry.cn-zhangjiakou.cr.aliyuncs.com/opensandbox/server:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: SANDBOX_CONFIG_PATH
+          value: /etc/opensandbox/config.toml
+        volumeMounts:
+        - name: config
+          mountPath: /etc/opensandbox/config.toml
+          subPath: config.toml
+        - name: config
+          mountPath: /etc/opensandbox/batchsandbox-template.yaml
+          subPath: batchsandbox-template.yaml
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+      volumes:
+      - name: config
+        configMap:
+          name: opensandbox-server-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensandbox-server
+  namespace: opensandbox
+  labels:
+    app: opensandbox-server
+spec:
+  selector:
+    app: opensandbox-server
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8080
+    protocol: TCP
+  type: ClusterIP

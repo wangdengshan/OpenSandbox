@@ -1,0 +1,5 @@
+FROM debian:bullseye-slim
+WORKDIR /workspace
+COPY task-executor server
+RUN chmod +x /workspace/server
+ENTRYPOINT ["/workspace/server"]

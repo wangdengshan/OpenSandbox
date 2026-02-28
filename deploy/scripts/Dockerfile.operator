@@ -1,0 +1,6 @@
+FROM debian:bullseye-slim
+RUN useradd -u 65532 nonroot 2>/dev/null || true
+WORKDIR /workspace
+COPY server .
+USER 65532
+ENTRYPOINT ["/workspace/server"]
