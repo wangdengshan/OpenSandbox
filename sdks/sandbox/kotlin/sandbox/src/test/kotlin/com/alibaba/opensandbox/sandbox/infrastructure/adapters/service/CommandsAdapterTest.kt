@@ -62,7 +62,8 @@ class CommandsAdapterTest {
                 .build()
 
         httpClientProvider = HttpClientProvider(config)
-        commandsAdapter = CommandsAdapter(httpClientProvider, endpoint)
+        val sessionAdapter = SessionAdapter(httpClientProvider, endpoint)
+        commandsAdapter = CommandsAdapter(httpClientProvider, endpoint, sessionAdapter)
     }
 
     @AfterEach

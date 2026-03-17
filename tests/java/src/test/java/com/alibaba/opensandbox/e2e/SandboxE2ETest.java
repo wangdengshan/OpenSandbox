@@ -863,6 +863,111 @@ public class SandboxE2ETest extends BaseE2ETest {
         assertEquals(envValue, injectedOutput);
     }
 
+    @Test
+    @Order(4)
+    @DisplayName("Bash session API: cwd and env persistence")
+    @Timeout(value = 2, unit = TimeUnit.MINUTES)
+    void testBashSessionApiCwdAndEnvPersistence() {
+        assertNotNull(sandbox);
+
+        String sid = sandbox.commands().createSession("/tmp");
+        assertNotNull(sid);
+        assertFalse(sid.isBlank());
+
+        Execution run =
+                sandbox
+                        .commands()
+                        .runInSession(
+                                sid,
+                                RunInSessionRequest.builder().code("pwd").build());
+        assertNull(run.getError());
+        String stdout =
+                run.getLogs().getStdout().stream()
+                        .map(OutputMessage::getText)
+                        .reduce("", (a, b) -> a.isEmpty() ? b : a + b)
+                        .trim();
+        assertEquals("/tmp", stdout);
+
+        run =
+                sandbox
+                        .commands()
+                        .runInSession(
+                                sid,
+                                RunInSessionRequest.builder()
+                                        .code("pwd")
+                                        .cwd("/var")
+                                        .build());
+        assertNull(run.getError());
+        stdout =
+                run.getLogs().getStdout().stream()
+                        .map(OutputMessage::getText)
+                        .reduce("", (a, b) -> a.isEmpty() ? b : a + b)
+                        .trim();
+        assertEquals("/var", stdout);
+
+        run =
+                sandbox
+                        .commands()
+                        .runInSession(
+                                sid,
+                                RunInSessionRequest.builder()
+                                        .code("pwd")
+                                        .cwd("/tmp")
+                                        .build());
+        assertNull(run.getError());
+        stdout =
+                run.getLogs().getStdout().stream()
+                        .map(OutputMessage::getText)
+                        .reduce("", (a, b) -> a.isEmpty() ? b : a + b)
+                        .trim();
+        assertEquals("/tmp", stdout);
+
+        run =
+                sandbox
+                        .commands()
+                        .runInSession(
+                                sid,
+                                RunInSessionRequest.builder()
+                                        .code("export E2E_SESSION_ENV=session-env-ok")
+                                        .build());
+        assertNull(run.getError());
+
+        run =
+                sandbox
+                        .commands()
+                        .runInSession(
+                                sid,
+                                RunInSessionRequest.builder()
+                                        .code("echo $E2E_SESSION_ENV")
+                                        .build());
+        assertNull(run.getError());
+        stdout =
+                run.getLogs().getStdout().stream()
+                        .map(OutputMessage::getText)
+                        .reduce("", (a, b) -> a.isEmpty() ? b : a + b)
+                        .trim();
+        assertEquals("session-env-ok", stdout);
+
+        String sid2 = sandbox.commands().createSession("/var");
+        assertNotNull(sid2);
+        run =
+                sandbox
+                        .commands()
+                        .runInSession(
+                                sid2,
+                                RunInSessionRequest.builder().code("pwd").build());
+        assertNull(run.getError());
+        stdout =
+                run.getLogs().getStdout().stream()
+                        .map(OutputMessage::getText)
+                        .reduce("", (a, b) -> a.isEmpty() ? b : a + b)
+                        .trim();
+        assertEquals("/var", stdout);
+
+        sandbox.commands().deleteSession(sid);
+        sandbox.commands().deleteSession(sid2);
+    }
+
     // ==========================================
     // Filesystem Operations Tests
     // ==========================================

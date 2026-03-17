@@ -20,6 +20,7 @@ import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.CommandLog
 import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.CommandStatus
 import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.Execution
 import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.RunCommandRequest
+import com.alibaba.opensandbox.sandbox.domain.models.execd.executions.RunInSessionRequest
 
 /**
  * Command execution operations for sandbox environments.
@@ -80,4 +81,50 @@ interface Commands {
         executionId: String,
         cursor: Long? = null,
     ): CommandLogs
+
+    /**
+     * Creates a new bash session with optional working directory.
+     *
+     * The session maintains shell state (e.g. cwd, environment) across multiple
+     * [runInSession] calls. Use [deleteSession] when done to release resources.
+     *
+     * @param cwd Optional working directory for the session
+     * @return Session ID for use with [runInSession] and [deleteSession]
+     */
+    fun createSession(cwd: String? = null): String
+
+    /**
+     * Runs shell code in an existing bash session and streams output via SSE.
+     *
+     * @param sessionId Session ID from [createSession]
+     * @param request Code to execute and optional cwd/timeout/handlers
+     * @return Execution result with stdout/stderr and completion status
+     */
+    fun runInSession(sessionId: String, request: RunInSessionRequest): Execution
+
+    /**
+     * Convenience overload for running code in a session with minimal options.
+     */
+    fun runInSession(
+        sessionId: String,
+        code: String,
+        cwd: String? = null,
+        timeoutMs: Long? = null,
+    ): Execution {
+        return runInSession(
+            sessionId,
+            RunInSessionRequest.builder()
+                .code(code)
+                .cwd(cwd)
+                .timeoutMs(timeoutMs)
+                .build(),
+        )
+    }
+
+    /**
+     * Deletes a bash session and releases resources.
+     *
+     * @param sessionId Session ID to delete (from [createSession])
+     */
+    fun deleteSession(sessionId: String)
 }
