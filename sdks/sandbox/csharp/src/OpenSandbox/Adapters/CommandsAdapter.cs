@@ -137,6 +137,119 @@ internal sealed class CommandsAdapter : IExecdCommands
         await _client.DeleteAsync("/command", queryParams, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<string> CreateSessionAsync(
+        CreateSessionOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        object? body = null;
+        if (!string.IsNullOrEmpty(options?.Cwd))
+        {
+            body = new { cwd = options.Cwd };
+        }
+
+        _logger.LogDebug("Creating bash session (cwd={Cwd})", options?.Cwd);
+        var response = await _client.PostAsync<CreateSessionResponse>("/session", body, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrEmpty(response?.SessionId))
+        {
+            throw new SandboxApiException(
+                message: "Create session returned empty session_id",
+                statusCode: 200,
+                error: new SandboxError(SandboxErrorCodes.UnexpectedResponse, "Create session returned empty session_id"));
+        }
+
+        return response.SessionId;
+    }
+
+    public async IAsyncEnumerable<ServerStreamEvent> RunInSessionStreamAsync(
+        string sessionId,
+        string code,
+        RunInSessionOptions? options = null,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            throw new InvalidArgumentException("sessionId cannot be empty");
+        }
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            throw new InvalidArgumentException("code cannot be empty");
+        }
+
+        var path = $"/session/{Uri.EscapeDataString(sessionId)}/run";
+        var url = $"{_baseUrl}{path}";
+        var requestBody = new RunInSessionRequest
+        {
+            Code = code,
+            Cwd = options?.Cwd,
+            TimeoutMs = options?.TimeoutMs
+        };
+
+        var json = JsonSerializer.Serialize(requestBody, JsonOptions);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
+        };
+
+        request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
+
+        foreach (var header in _headers)
+        {
+            request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+
+        using var response = await _sseHttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+        await foreach (var ev in SseParser.ParseJsonEventStreamAsync<ServerStreamEvent>(response, "Run in session failed", cancellationToken).ConfigureAwait(false))
+        {
+            yield return ev;
+        }
+    }
+
+    public async Task<Execution> RunInSessionAsync(
+        string sessionId,
+        string code,
+        RunInSessionOptions? options = null,
+        ExecutionHandlers? handlers = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            throw new InvalidArgumentException("sessionId cannot be empty");
+        }
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            throw new InvalidArgumentException("code cannot be empty");
+        }
+
+        _logger.LogDebug("Running in session: {SessionId} (codeLength={CodeLength})", sessionId, code.Length);
+        var execution = new Execution();
+        var dispatcher = new ExecutionEventDispatcher(execution, handlers);
+
+        await foreach (var ev in RunInSessionStreamAsync(sessionId, code, options, cancellationToken).ConfigureAwait(false))
+        {
+            if (ev.Type == ServerStreamEventTypes.Init && string.IsNullOrEmpty(ev.Text) && !string.IsNullOrEmpty(execution.Id))
+            {
+                ev.Text = execution.Id;
+            }
+
+            await dispatcher.DispatchAsync(ev).ConfigureAwait(false);
+        }
+
+        return execution;
+    }
+
+    public async Task DeleteSessionAsync(string sessionId, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            throw new InvalidArgumentException("sessionId cannot be empty");
+        }
+
+        _logger.LogDebug("Deleting bash session: {SessionId}", sessionId);
+        var path = $"/session/{Uri.EscapeDataString(sessionId)}";
+        await _client.DeleteAsync(path, cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
     public Task<CommandStatus> GetCommandStatusAsync(string executionId, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(executionId))

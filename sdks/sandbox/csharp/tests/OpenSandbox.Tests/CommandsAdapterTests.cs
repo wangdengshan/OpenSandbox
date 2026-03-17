@@ -47,7 +47,7 @@ public class CommandsAdapterTests
         status.Content.Should().Be("sleep 1");
         status.Running.Should().BeTrue();
         status.ExitCode.Should().BeNull();
-        httpHandler.RequestUris.Should().Contain(uri => uri.EndsWith("/command/status/cmd-1", StringComparison.Ordinal));
+        httpHandler.RequestUris.Should().Contain(uri => uri.EndsWith("/command/status/cmd-1"));
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class CommandsAdapterTests
 
         logs.Content.Should().Contain("line1");
         logs.Cursor.Should().Be(42);
-        httpHandler.RequestUris.Should().Contain(uri => uri.Contains("/command/cmd-2/logs?cursor=10", StringComparison.Ordinal));
+        httpHandler.RequestUris.Should().Contain(uri => uri.Contains("/command/cmd-2/logs?cursor=10"));
     }
 
     [Fact]
@@ -179,6 +179,153 @@ public class CommandsAdapterTests
 
         await act.Should().ThrowAsync<InvalidArgumentException>()
             .WithMessage("*uid is required when gid is provided*");
+    }
+
+    // --- Bash session API integration tests ---
+
+    [Fact]
+    public async Task CreateSessionAsync_ShouldReturnSessionId_WhenCwdProvided()
+    {
+        var handler = new StubHttpMessageHandler(async (request, _) =>
+        {
+            request.Method.Should().Be(HttpMethod.Post);
+            request.RequestUri!.ToString().Should().Contain("/session");
+            request.Content.Should().NotBeNull();
+            var body = await request.Content!.ReadAsStringAsync().ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(body);
+            doc.RootElement.GetProperty("cwd").GetString().Should().Be("/tmp");
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"session_id\":\"sess-abc123\"}", Encoding.UTF8, "application/json")
+            };
+        });
+        var adapter = CreateAdapter(handler);
+
+        var sessionId = await adapter.CreateSessionAsync(new CreateSessionOptions { Cwd = "/tmp" });
+
+        sessionId.Should().Be("sess-abc123");
+        handler.RequestUris.Should().Contain(uri => uri.EndsWith("/session"));
+    }
+
+    [Fact]
+    public async Task CreateSessionAsync_ShouldReturnSessionId_WhenNoOptions()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            request.Method.Should().Be(HttpMethod.Post);
+            request.RequestUri!.ToString().Should().Contain("/session");
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"session_id\":\"sess-default\"}", Encoding.UTF8, "application/json")
+            });
+        });
+        var adapter = CreateAdapter(handler);
+
+        var sessionId = await adapter.CreateSessionAsync();
+
+        sessionId.Should().Be("sess-default");
+    }
+
+    [Fact]
+    public async Task CreateSessionAsync_ShouldThrow_WhenResponseHasEmptySessionId()
+    {
+        var handler = new StubHttpMessageHandler((_, _) =>
+        {
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"session_id\":\"\"}", Encoding.UTF8, "application/json")
+            });
+        });
+        var adapter = CreateAdapter(handler);
+
+        var act = () => adapter.CreateSessionAsync();
+
+        await act.Should().ThrowAsync<SandboxApiException>()
+            .WithMessage("*empty session_id*");
+    }
+
+    [Fact]
+    public async Task RunInSessionAsync_ShouldSendCodeAndOptions()
+    {
+        var handler = new StubHttpMessageHandler(async (request, _) =>
+        {
+            request.Method.Should().Be(HttpMethod.Post);
+            request.RequestUri!.ToString().Should().Contain("/session/sess-1/run");
+            request.Content.Should().NotBeNull();
+            var body = await request.Content!.ReadAsStringAsync().ConfigureAwait(false);
+            using var doc = JsonDocument.Parse(body);
+            doc.RootElement.GetProperty("code").GetString().Should().Be("pwd");
+            doc.RootElement.GetProperty("cwd").GetString().Should().Be("/var");
+            doc.RootElement.GetProperty("timeout_ms").GetInt64().Should().Be(5000);
+
+            var sse = "data: {\"type\":\"stdout\",\"text\":\"/var\"}\ndata: {\"type\":\"execution_complete\"}\n";
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(sse, Encoding.UTF8, "text/event-stream")
+            };
+        });
+        var adapter = CreateAdapter(handler);
+
+        var run = await adapter.RunInSessionAsync(
+            "sess-1",
+            "pwd",
+            new RunInSessionOptions { Cwd = "/var", TimeoutMs = 5000 });
+
+        run.Should().NotBeNull();
+        run.Logs.Stdout.Should().ContainSingle(m => m.Text == "/var");
+        handler.RequestUris.Should().Contain(uri => uri.Contains("/session/sess-1/run"));
+    }
+
+    [Fact]
+    public async Task RunInSessionAsync_ShouldThrow_WhenSessionIdEmpty()
+    {
+        var adapter = CreateAdapter(new StubHttpMessageHandler((_, _) => throw new InvalidOperationException("Should not be called")));
+
+        var act = () => adapter.RunInSessionAsync("", "echo hi");
+
+        await act.Should().ThrowAsync<InvalidArgumentException>()
+            .WithMessage("*sessionId*");
+    }
+
+    [Fact]
+    public async Task RunInSessionAsync_ShouldThrow_WhenCodeEmpty()
+    {
+        var adapter = CreateAdapter(new StubHttpMessageHandler((_, _) => throw new InvalidOperationException("Should not be called")));
+
+        var act = () => adapter.RunInSessionAsync("sess-1", "  ");
+
+        await act.Should().ThrowAsync<InvalidArgumentException>()
+            .WithMessage("*code*");
+    }
+
+    [Fact]
+    public async Task DeleteSessionAsync_ShouldCallDeleteEndpoint()
+    {
+        var handler = new StubHttpMessageHandler((request, _) =>
+        {
+            request.Method.Should().Be(HttpMethod.Delete);
+            request.RequestUri!.ToString().Should().Contain("/session/sess-to-delete");
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
+        });
+        var adapter = CreateAdapter(handler);
+
+        await adapter.DeleteSessionAsync("sess-to-delete");
+
+        handler.RequestUris.Should().Contain(uri => uri.EndsWith("/session/sess-to-delete"));
+    }
+
+    [Fact]
+    public async Task DeleteSessionAsync_ShouldThrow_WhenSessionIdEmpty()
+    {
+        var adapter = CreateAdapter(new StubHttpMessageHandler((_, _) => throw new InvalidOperationException("Should not be called")));
+
+        var act = () => adapter.DeleteSessionAsync("  ");
+
+        await act.Should().ThrowAsync<InvalidArgumentException>()
+            .WithMessage("*sessionId*");
     }
 
     private static CommandsAdapter CreateAdapter(HttpMessageHandler httpHandler)

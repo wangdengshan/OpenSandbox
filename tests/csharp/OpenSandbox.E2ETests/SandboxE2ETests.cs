@@ -579,6 +579,54 @@ public class SandboxE2ETests : IClassFixture<SandboxE2ETestFixture>
     }
 
     [Fact(Timeout = 2 * 60 * 1000)]
+    public async Task Bash_Session_API_Cwd_And_Env_Persistence()
+    {
+        var sandbox = _fixture.Sandbox;
+
+        var sid = await sandbox.Commands.CreateSessionAsync(new CreateSessionOptions { Cwd = "/tmp" });
+        Assert.False(string.IsNullOrWhiteSpace(sid));
+
+        var run = await sandbox.Commands.RunInSessionAsync(sid, "pwd");
+        Assert.Null(run.Error);
+        var stdout = string.Join("", run.Logs.Stdout.Select(m => m.Text)).Trim();
+        Assert.Equal("/tmp", stdout);
+
+        run = await sandbox.Commands.RunInSessionAsync(
+            sid,
+            "pwd",
+            options: new RunInSessionOptions { Cwd = "/var" });
+        Assert.Null(run.Error);
+        stdout = string.Join("", run.Logs.Stdout.Select(m => m.Text)).Trim();
+        Assert.Equal("/var", stdout);
+
+        run = await sandbox.Commands.RunInSessionAsync(
+            sid,
+            "pwd",
+            options: new RunInSessionOptions { Cwd = "/tmp" });
+        Assert.Null(run.Error);
+        stdout = string.Join("", run.Logs.Stdout.Select(m => m.Text)).Trim();
+        Assert.Equal("/tmp", stdout);
+
+        run = await sandbox.Commands.RunInSessionAsync(sid, "export E2E_SESSION_ENV=session-env-ok");
+        Assert.Null(run.Error);
+
+        run = await sandbox.Commands.RunInSessionAsync(sid, "echo $E2E_SESSION_ENV");
+        Assert.Null(run.Error);
+        stdout = string.Join("", run.Logs.Stdout.Select(m => m.Text)).Trim();
+        Assert.Equal("session-env-ok", stdout);
+
+        var sid2 = await sandbox.Commands.CreateSessionAsync(new CreateSessionOptions { Cwd = "/var" });
+        Assert.False(string.IsNullOrWhiteSpace(sid2));
+        run = await sandbox.Commands.RunInSessionAsync(sid2, "pwd");
+        Assert.Null(run.Error);
+        stdout = string.Join("", run.Logs.Stdout.Select(m => m.Text)).Trim();
+        Assert.Equal("/var", stdout);
+
+        await sandbox.Commands.DeleteSessionAsync(sid);
+        await sandbox.Commands.DeleteSessionAsync(sid2);
+    }
+
+    [Fact(Timeout = 2 * 60 * 1000)]
     public async Task Filesystem_Operations_CRUD_Replace_Move_Delete()
     {
         var sandbox = _fixture.Sandbox;
