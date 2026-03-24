@@ -506,20 +506,11 @@ func getSandboxAllocation(obj kclient.Object) (*SandboxAllocation, error) {
 }
 
 func getPoolAllocation(pool *sandboxv1alpha1.Pool) (*PoolAllocation, error) {
-	allocation := &PoolAllocation{}
-	anno := pool.GetAnnotations()
-	if anno == nil {
-		return allocation, nil
-	}
-	str, ok := anno[AnnoPoolAllocStatusKey]
-	if !ok {
-		return allocation, nil
-	}
-	err := json.Unmarshal([]byte(str), allocation)
-	if err != nil {
+	store := NewInMemoryAllocationStore(k8sClient)
+	if err := store.Recover(ctx, k8sClient); err != nil {
 		return nil, err
 	}
-	return allocation, nil
+	return store.GetAllocation(ctx, pool)
 }
 
 var _ = Describe("Pool deletion and recreation", func() {

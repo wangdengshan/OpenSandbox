@@ -377,6 +377,7 @@ func TestSyncSandboxAllocation(t *testing.T) {
 			return nil
 		}).Times(1)
 
+	syncer.EXPECT().GetAllocation(gomock.Any(), sandbox).Return(nil, nil).Times(1)
 	err := allocator.SyncSandboxAllocation(context.Background(), sandbox, pods)
 	assert.NoError(t, err)
 }
@@ -484,8 +485,11 @@ func TestSyncSandboxAllocationError(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "sbx1"},
 	}
 	pods := []string{"pod1"}
+	oldPods := []string{}
 
+	syncer.EXPECT().GetAllocation(gomock.Any(), sandbox).Return(&SandboxAllocation{Pods: oldPods}, nil).Times(1)
 	syncer.EXPECT().SetAllocation(gomock.Any(), sandbox, gomock.Any()).Return(assert.AnError).Times(1)
+	store.EXPECT().UpdateAllocation(gomock.Any(), "", sandbox.Name, oldPods).Times(1)
 
 	err := allocator.SyncSandboxAllocation(context.Background(), sandbox, pods)
 	assert.Error(t, err)

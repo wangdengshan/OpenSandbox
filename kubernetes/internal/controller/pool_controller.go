@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -170,6 +171,7 @@ func (r *PoolReconciler) reconcilePool(ctx context.Context, pool *sandboxv1alpha
 			supplySandbox -= int32(len(idlePods))
 		}
 
+		// 1. Persist to memory
 		if poolDirty {
 			if err := r.Allocator.PersistPoolAllocation(ctx, latestPool, &AllocStatus{PodAllocation: podAllocation}); err != nil {
 				log.Error(err, "Failed to persist pool allocation")
@@ -177,13 +179,15 @@ func (r *PoolReconciler) reconcilePool(ctx context.Context, pool *sandboxv1alpha
 			}
 		}
 
+		// 2. Sync BatchSandbox allocations. Rollback in memory alocation if failed to sync.
+		// Optimize this concurrently if needed.
 		var syncErrs []error
 		for _, syncInfo := range pendingSyncs {
 			if err := r.Allocator.SyncSandboxAllocation(ctx, syncInfo.Sandbox, syncInfo.Pods); err != nil {
 				log.Error(err, "Failed to sync sandbox allocation", "sandbox", syncInfo.SandboxName)
 				syncErrs = append(syncErrs, fmt.Errorf("failed to sync sandbox %s: %w", syncInfo.SandboxName, err))
 			} else {
-				log.Info("Successfully assign Sandbox", "sandbox", syncInfo.SandboxName, "pods", syncInfo.Pods)
+				log.Info("Successfully sync Sandbox allocation", "sandbox", syncInfo.SandboxName, "pods", syncInfo.Pods)
 			}
 		}
 		if len(syncErrs) > 0 {
@@ -294,6 +298,9 @@ func (r *PoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			},
 		}
 	}
+	mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		return r.Allocator.Recover(ctx)
+	}))
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&sandboxv1alpha1.Pool{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
