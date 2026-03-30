@@ -119,13 +119,13 @@ func TestPTYSession_ANSISequences(t *testing.T) {
 	_, err := s.WriteStdin([]byte("printf $'\\033[1;32mGREEN\\033[0m\\n'\n"))
 	require.NoError(t, err)
 
-	// Wait for "GREEN" to appear in the replay buffer.
-	require.True(t, replayContains(t, s, "GREEN", 5*time.Second),
-		"expected 'GREEN' in replay buffer")
+	// Wait for ESC from printf output. Do not match on "GREEN" alone: the echoed
+	// command line contains that substring before printf runs.
+	require.True(t, replayContains(t, s, "\x1b", 5*time.Second),
+		"expected ESC bytes in PTY replay buffer")
 
-	// PTY mode should propagate ESC bytes verbatim.
 	data, _ := s.replay.ReadFrom(0)
-	assert.Contains(t, string(data), "\x1b", "expected ESC bytes in PTY output")
+	assert.Contains(t, string(data), "GREEN", "expected GREEN text in PTY output")
 }
 
 func TestPTYSession_PipeMode(t *testing.T) {
