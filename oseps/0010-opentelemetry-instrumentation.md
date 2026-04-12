@@ -4,7 +4,7 @@ authors:
   - "@Pangjiping"
   - "@ninan-nn"
 creation-date: 2026-03-18
-last-updated: 2026-04-01
+last-updated: 2026-04-12
 status: implementing
 ---
 
@@ -111,15 +111,14 @@ Application code records metrics on critical paths. **HTTP metrics** for execd/e
 | Category | Metric name (suggested) | Type | Description |
 |----------|-------------------------|------|-------------|
 | **HTTP** | `execd.http.request.duration` | Histogram | Request latency (ms) by `http_method`, **`http_route` (route template)**, `http_status_code` |
-| **Code execution** | `execd.execution.duration` | Histogram | Duration per execution with attributes `operation` (e.g. `run_code`/`run_in_session`/`run_command`) and `result` (`success`/`failure`) |
-| | `execd.execution.memory_bytes` | Histogram / Gauge | Memory usage during execution (if available) |
+| **Code execution** | `execd.execution.duration` | Histogram | Duration per execution with attributes `operation` (e.g. `run_code`/`run_in_session`/`run_command`) and `result` (derived from execution callbacks) |
 | **Jupyter sessions** | `execd.jupyter.sessions.active` | UpDownCounter / Gauge | Current active sessions (tracked by create/delete session APIs) |
 | **Filesystem** | `execd.filesystem.operations.duration` | Histogram | Operation duration with attributes `operation` (upload/download/search/replace/chmod/rename/mkdir/rmdir/delete/info) and `result` (`success`/`failure`) |
-| **System** | `execd.system.cpu.usage` | Gauge | Process or host CPU usage (optional) |
+| **System** | `execd.system.cpu.usage` | Gauge | System CPU usage percent (from gopsutil) |
 | | `execd.system.memory.usage_bytes` | Gauge | Memory usage |
 | | `execd.system.process.count` | Gauge | Current number of processes in the system |
 
-All metrics are created via the OpenTelemetry Meter; units and attributes follow [OpenTelemetry semantic conventions](https://opentelemetry.io/docs/specs/semconv/).
+All metrics are created via the OpenTelemetry Meter; metric names/units/attributes are implementation-defined and keep low-cardinality dimensions.
 
 **Execd HTTP dimensions:** Several execd routes embed identifiers in the URL (e.g. `/code/contexts/:contextId`, `/session/:sessionId/run`, `/command/status/:id` in `components/execd/pkg/web/router.go`). Using the raw request path as a metric dimension would create high-cardinality time series and make OTLP/Prometheus metrics hard to operate. Therefore **the route template must be used as the dimension**: `http_route` (e.g. `/code/contexts/:contextId`), not the actual request path (e.g. `/code/contexts/abc-123`). Record the matched route pattern from Gin (e.g. `c.FullPath()` or equivalent; fallback `unknown`) in metric attributes—**without** OpenTelemetry tracing middleware.
 
