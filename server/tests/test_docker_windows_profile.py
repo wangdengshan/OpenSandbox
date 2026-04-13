@@ -21,6 +21,7 @@ from opensandbox_server.api.schema import PlatformSpec
 from opensandbox_server.services.docker_windows_profile import (
     apply_windows_runtime_host_config_defaults,
     escape_batch_env_value,
+    inject_windows_user_ports,
     resolve_docker_platform,
     resolve_windows_execd_download_url,
     validate_windows_runtime_prerequisites,
@@ -34,7 +35,6 @@ def test_apply_windows_runtime_host_config_defaults_injects_required_defaults():
     assert updated["devices"] == ["/dev/kvm", "/dev/net/tun"]
     assert "NET_ADMIN" in updated["cap_add"]
     assert "NET_RAW" in updated["cap_add"]
-    assert "opensandbox-win-storage-sbx-1:/storage:rw" in updated["binds"]
     assert "opensandbox-win-oem-sbx-1:/oem:rw" in updated["binds"]
 
 
@@ -73,6 +73,19 @@ def test_resolve_docker_platform_preserves_linux_profile():
         resolve_docker_platform(PlatformSpec(os="linux", arch="arm64"))
         == "linux/arm64"
     )
+
+
+def test_inject_windows_user_ports_appends_when_missing():
+    env = ["VERSION=11"]
+    updated = inject_windows_user_ports(env, ["44772", "8080/tcp"])
+    assert "VERSION=11" in updated
+    assert "USER_PORTS=44772,8080" in updated
+
+
+def test_inject_windows_user_ports_merges_existing_value():
+    env = ["USER_PORTS=3389,44772", "VERSION=11"]
+    updated = inject_windows_user_ports(env, ["44772", "8080"])
+    assert "USER_PORTS=3389,44772,8080" in updated
 
 
 def test_resolve_windows_execd_download_url_prefers_request_env_override():

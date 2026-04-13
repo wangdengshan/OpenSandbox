@@ -1177,6 +1177,7 @@ async def test_create_sandbox_windows_profile_injects_runtime_defaults(mock_dock
 
     cfg = _app_config()
     cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.11"
+    cfg.docker.network_mode = "bridge"
     service = DockerSandboxService(config=cfg)
     request = CreateSandboxRequest(
         image=ImageSpec(uri="dockurr/windows:latest"),
@@ -1205,7 +1206,7 @@ async def test_create_sandbox_windows_profile_injects_runtime_defaults(mock_dock
     assert "/dev/net/tun" in host_config_kwargs["devices"]
     assert "NET_ADMIN" in host_config_kwargs["cap_add"]
     assert "NET_RAW" in host_config_kwargs["cap_add"]
-    assert any(bind.endswith(":/storage:rw") for bind in host_config_kwargs["binds"])
+    assert not any(bind.endswith(":/storage:rw") for bind in host_config_kwargs["binds"])
     assert any(bind.endswith(":/oem:rw") for bind in host_config_kwargs["binds"])
 
 
@@ -1285,6 +1286,7 @@ async def test_create_sandbox_windows_profile_rejects_missing_runtime_devices(mo
 
     cfg = _app_config()
     cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.11"
+    cfg.docker.network_mode = "bridge"
     service = DockerSandboxService(config=cfg)
     request = CreateSandboxRequest(
         image=ImageSpec(uri="dockurr/windows:latest"),
@@ -1327,6 +1329,7 @@ async def test_create_sandbox_windows_profile_accepts_dockur_demo_like_request(m
 
     cfg = _app_config()
     cfg.runtime.execd_image = "ghcr.io/opensandbox/execd:v1.0.11"
+    cfg.docker.network_mode = "bridge"
     service = DockerSandboxService(config=cfg)
     request = CreateSandboxRequest(
         image=ImageSpec(uri="dockurr/windows:latest"),
@@ -1353,6 +1356,7 @@ async def test_create_sandbox_windows_profile_accepts_dockur_demo_like_request(m
 
     forwarded_env = mock_create.call_args.args[4]
     assert "VERSION=11" in forwarded_env
+    assert "USER_PORTS=44772,8080" in forwarded_env
     assert response.platform is not None
     assert response.platform.os == "windows"
     assert response.platform.arch == "amd64"

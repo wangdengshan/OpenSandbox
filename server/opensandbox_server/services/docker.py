@@ -67,6 +67,7 @@ from opensandbox_server.services.docker_diagnostics import DockerDiagnosticsMixi
 from opensandbox_server.services.docker_windows_profile import (
     apply_windows_runtime_host_config_defaults,
     fetch_execd_install_bat,
+    inject_windows_user_ports,
     install_windows_oem_scripts,
     is_windows_platform,
     normalize_bootstrap_command,
@@ -1241,6 +1242,7 @@ class DockerSandboxService(DockerDiagnosticsMixin, OSSFSMixin, SandboxService, E
                     host_config_kwargs,
                     sandbox_id,
                 )
+                environment = inject_windows_user_ports(environment, exposed_ports)
 
             created_container = self._create_and_start_container(
                 sandbox_id,

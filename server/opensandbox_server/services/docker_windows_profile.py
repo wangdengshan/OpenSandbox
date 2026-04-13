@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 WINDOWS_REQUIRED_DEVICES = ("/dev/kvm", "/dev/net/tun")
 WINDOWS_REQUIRED_CAP_ADD = ("NET_ADMIN", "NET_RAW")
 WINDOWS_EXECD_DOWNLOAD_URL_ENV = "EXECD_DOWNLOAD_URL"
+WINDOWS_USER_PORTS_ENV = "USER_PORTS"
 DEFAULT_WINDOWS_EXECD_RELEASE_TAG = "v1.0.11"
 DEFAULT_WINDOWS_EXECD_ARCH = "amd64"
 
@@ -76,6 +77,47 @@ def normalize_bootstrap_command(
     import shlex
 
     return shlex.split(bootstrap_command[0])
+
+def inject_windows_user_ports(environment: list[str], exposed_ports: Optional[list[str]]) -> list[str]:
+    """
+    Ensure USER_PORTS includes container ports exposed for windows profile.
+    """
+    if not exposed_ports:
+        return environment
+
+    resolved_ports: list[str] = []
+    for port_spec in exposed_ports:
+        token = str(port_spec).split("/", 1)[0].strip()
+        if token.isdigit() and token not in resolved_ports:
+            resolved_ports.append(token)
+    if not resolved_ports:
+        return environment
+
+    env_items = list(environment)
+    user_ports_index: Optional[int] = None
+    existing_ports: list[str] = []
+
+    for idx, item in enumerate(env_items):
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        if key != WINDOWS_USER_PORTS_ENV:
+            continue
+        user_ports_index = idx
+        existing_ports = [p.strip() for p in value.split(",") if p.strip()]
+        break
+
+    merged = list(existing_ports)
+    for port in resolved_ports:
+        if port not in merged:
+            merged.append(port)
+    merged_value = ",".join(merged)
+
+    if user_ports_index is None:
+        env_items.append(f"{WINDOWS_USER_PORTS_ENV}={merged_value}")
+    else:
+        env_items[user_ports_index] = f"{WINDOWS_USER_PORTS_ENV}={merged_value}"
+    return env_items
 
 
 def validate_windows_runtime_prerequisites() -> None:
@@ -174,11 +216,7 @@ def apply_windows_runtime_host_config_defaults(
     """
     updated = dict(host_config_kwargs)
 
-    # Keep sandbox-local named volumes for Windows VM storage and OEM scripts.
-    default_binds = [
-        f"opensandbox-win-storage-{sandbox_id}:/storage:rw",
-        f"opensandbox-win-oem-{sandbox_id}:/oem:rw",
-    ]
+    default_binds = [f"opensandbox-win-oem-{sandbox_id}:/oem:rw"]
     existing_binds = list(updated.get("binds") or [])
     updated["binds"] = existing_binds + default_binds
 
