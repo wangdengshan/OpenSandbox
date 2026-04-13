@@ -1405,6 +1405,11 @@ class DockerSandboxService(DockerDiagnosticsMixin, OSSFSMixin, SandboxService, E
         if allowed_prefixes and resolved_path != volume.host.path:
             ensure_valid_host_path(resolved_path, allowed_prefixes)
 
+        # Allow existing host files (for example ISO binds to /boot.iso)
+        # without attempting directory creation.
+        if os.path.isfile(resolved_path):
+            return
+
         try:
             os.makedirs(resolved_path, exist_ok=True)
         except OSError as e:

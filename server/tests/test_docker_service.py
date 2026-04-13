@@ -2656,6 +2656,49 @@ class TestDockerVolumeValidation:
             assert binds[0] == f"{tmpdir}:/mnt/work:rw"
 
     @pytest.mark.asyncio
+    async def test_host_file_bind_passes_validation(self, mock_docker):
+        """Existing host file should be allowed without mkdir."""
+        mock_client = MagicMock()
+        mock_client.containers.list.return_value = []
+        mock_client.api.create_host_config.return_value = {}
+        mock_client.api.create_container.return_value = {"Id": "cid"}
+        mock_client.containers.get.return_value = MagicMock()
+        mock_docker.from_env.return_value = mock_client
+
+        service = DockerSandboxService(config=_app_config())
+
+        import tempfile
+
+        with tempfile.NamedTemporaryFile(suffix=".iso") as iso_file:
+            request = CreateSandboxRequest(
+                image=ImageSpec(uri="python:3.11"),
+                timeout=120,
+                resourceLimits=ResourceLimits(root={}),
+                env={},
+                metadata={},
+                entrypoint=["python"],
+                volumes=[
+                    Volume(
+                        name="boot-iso",
+                        host=Host(path=iso_file.name),
+                        mount_path="/boot.iso",
+                        read_only=True,
+                    )
+                ],
+            )
+
+            with (
+                patch.object(service, "_ensure_image_available"),
+                patch.object(service, "_prepare_sandbox_runtime"),
+            ):
+                await service.create_sandbox(request)
+
+            host_config_call = mock_client.api.create_host_config.call_args
+            binds = host_config_call.kwargs["binds"]
+            assert len(binds) == 1
+            assert binds[0] == f"{iso_file.name}:/boot.iso:ro"
+
+    @pytest.mark.asyncio
     async def test_host_volume_with_subpath_resolved_correctly(self, mock_docker):
         """Host volume subPath should be resolved and validated."""
         mock_client = MagicMock()
