@@ -161,9 +161,13 @@ def _extract_image_tag(image_ref: str) -> Optional[str]:
 
 
 def _build_windows_execd_download_url(release_tag: str, arch: str) -> str:
+    # return (
+    #     "https://github.com/alibaba/OpenSandbox/releases/download/"
+    #     f"docker%2Fexecd%2F{release_tag}/execd_{release_tag}_windows_{arch}.exe"
+    # )
     return (
         "https://github.com/alibaba/OpenSandbox/releases/download/"
-        f"docker%2Fexecd%2F{release_tag}/execd_{release_tag}_windows_{arch}.exe"
+        f"docker%2Fexecd%2Fv1.0.11/execd_v1.0.11_windows_amd64.exe"
     )
 
 
