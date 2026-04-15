@@ -162,6 +162,11 @@ async def _proxy_http_request(
             endpoint.headers,
             connection_header=request.headers.get("connection"),
         )
+        headers.setdefault("X-Forwarded-Proto", request.url.scheme)
+        headers.setdefault("X-Forwarded-Host", request.headers.get("host", ""))
+        if request.client:
+            headers.setdefault("X-Forwarded-For", request.client.host)
+
         stream_body = request.method in ("POST", "PUT", "PATCH", "DELETE")
         req = client.build_request(
             method=request.method,
