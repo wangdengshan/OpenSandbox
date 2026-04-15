@@ -131,7 +131,7 @@ async def _stream_backend_response(resp: httpx.Response) -> AsyncIterator[bytes]
     return to the pool; Starlette's StreamingResponse does not do this automatically.
     """
     try:
-        async for chunk in resp.aiter_bytes():
+        async for chunk in resp.aiter_raw():
             yield chunk
     finally:
         await resp.aclose()
