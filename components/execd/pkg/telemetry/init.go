@@ -36,7 +36,6 @@ const (
 var (
 	httpRequestDuration      metric.Float64Histogram
 	executionDuration        metric.Float64Histogram
-	sessionsActive           metric.Int64UpDownCounter
 	filesystemOperationDurMs metric.Float64Histogram
 )
 
@@ -70,14 +69,6 @@ func registerExecdMetrics() error {
 		"execd.execution.duration",
 		metric.WithDescription("Duration per execution"),
 		metric.WithUnit("ms"),
-	)
-	if err != nil {
-		return err
-	}
-
-	sessionsActive, err = meter.Int64UpDownCounter(
-		"execd.jupyter.sessions.active",
-		metric.WithDescription("Current active sessions"),
 	)
 	if err != nil {
 		return err

@@ -319,7 +319,6 @@ func (c *CodeInterpretingController) CreateSession() {
 		return
 	}
 
-	telemetry.RecordSessionCreated(c.ctx.Request.Context())
 	c.RespondSuccess(model.CreateSessionResponse{SessionID: sessionID})
 }
 
@@ -446,7 +445,6 @@ func (c *CodeInterpretingController) DeleteSession() {
 		return
 	}
 
-	telemetry.RecordSessionDeleted(c.ctx.Request.Context())
 	c.RespondSuccess(nil)
 }
 

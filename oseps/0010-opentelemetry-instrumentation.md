@@ -112,7 +112,6 @@ Application code records metrics on critical paths. **HTTP metrics** for execd/e
 |----------|-------------------------|------|-------------|
 | **HTTP** | `execd.http.request.duration` | Histogram | Request latency (ms) by `http_method`, **`http_route` (route template)**, `http_status_code` |
 | **Code execution** | `execd.execution.duration` | Histogram | Duration per execution with attributes `operation` (e.g. `run_code`/`run_in_session`/`run_command`) and `result` (derived from execution callbacks) |
-| **Jupyter sessions** | `execd.jupyter.sessions.active` | UpDownCounter / Gauge | Current active sessions (tracked by create/delete session APIs) |
 | **Filesystem** | `execd.filesystem.operations.duration` | Histogram | Operation duration with attributes `operation` (upload/download/search/replace/chmod/rename/mkdir/rmdir/delete/info) and `result` (`success`/`failure`) |
 | **System** | `execd.system.cpu.usage` | Gauge | System CPU usage percent (from gopsutil) |
 | | `execd.system.memory.usage_bytes` | Gauge | Memory usage |

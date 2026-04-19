@@ -49,20 +49,6 @@ func RecordExecutionDuration(ctx context.Context, operation, result string, dura
 	executionDuration.Record(ctx, durationMillis, metric.WithAttributes(attrs...))
 }
 
-func RecordSessionCreated(ctx context.Context) {
-	if sessionsActive == nil {
-		return
-	}
-	sessionsActive.Add(ctx, 1, metric.WithAttributes(execdSharedAttrs()...))
-}
-
-func RecordSessionDeleted(ctx context.Context) {
-	if sessionsActive == nil {
-		return
-	}
-	sessionsActive.Add(ctx, -1, metric.WithAttributes(execdSharedAttrs()...))
-}
-
 func RecordFilesystemOperation(ctx context.Context, operation, result string, durationMillis float64) {
 	if filesystemOperationDurMs == nil {
 		return
